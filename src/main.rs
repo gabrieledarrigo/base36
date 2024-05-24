@@ -24,6 +24,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let number = parse_args()?;
     let in_base36 = Base36::encode(number);
 
-    println!("{}", in_base36);
+    println!("{in_base36}");
     Ok(())
 }
