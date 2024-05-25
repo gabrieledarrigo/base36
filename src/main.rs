@@ -22,7 +22,7 @@ fn parse_args() -> Result<i32, Box<dyn Error>> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let number = parse_args()?;
-    let in_base36 = Base36::encode(number);
+    let in_base36 = Base36::encode(number)?;
 
     println!("{in_base36}");
     Ok(())

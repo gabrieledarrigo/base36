@@ -9,19 +9,21 @@ const CHARSET_LENGTH: i64 = 36;
 const CHARSET_REGEX: &str = "^-?[0-9A-Z]+$";
 
 #[derive(Debug)]
-pub enum DecodeError {
+pub enum ParsingError {
     InvalidBase36String,
     InvalidCharacter(char),
+    InvalidIndex(usize),
     CannotDecodeNegativeSign,
 }
 
-impl Error for DecodeError {}
+impl Error for ParsingError {}
 
-impl Display for DecodeError {
+impl Display for ParsingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidBase36String => write!(f, "Invalid base36 string"),
             Self::InvalidCharacter(c) => write!(f, "Invalid character found: {c}"),
+            Self::InvalidIndex(i) => write!(f, "Invalid index: {i}"),
             Self::CannotDecodeNegativeSign => write!(f, "Cannot decode negative sign"),
         }
     }
@@ -30,7 +32,7 @@ impl Display for DecodeError {
 pub struct Base36 {}
 
 impl Base36 {
-    pub fn encode(number: i32) -> String {
+    pub fn encode(number: i32) -> Result<String, ParsingError> {
         let mut number = i64::from(number);
 
         let is_negative = number < 0;
@@ -39,16 +41,17 @@ impl Base36 {
         }
 
         if number == 0 {
-            return String::from(ZERO);
+            return Ok(String::from(ZERO));
         }
 
         let mut base_36 = Vec::new();
 
         while number > 0 {
+            let index = (number % CHARSET_LENGTH) as usize;
             let char = CHARSET
                 .chars()
-                .nth((number % CHARSET_LENGTH) as usize)
-                .unwrap();
+                .nth(index)
+                .ok_or(ParsingError::InvalidIndex(index))?;
 
             base_36.push(char);
             number /= CHARSET_LENGTH;
@@ -60,12 +63,12 @@ impl Base36 {
             base_36.insert(0, MINUS);
         }
 
-        base_36
+        Ok(base_36)
     }
 
-    pub fn decode(base_36: String) -> Result<i32, DecodeError> {
+    pub fn decode(base_36: String) -> Result<i32, ParsingError> {
         if !Regex::new(CHARSET_REGEX).unwrap().is_match(&base_36) {
-            return Err(DecodeError::InvalidBase36String);
+            return Err(ParsingError::InvalidBase36String);
         }
 
         let mut base_36 = base_36;
@@ -75,7 +78,7 @@ impl Base36 {
         if is_negative {
             base_36 = base_36
                 .get(1..)
-                .ok_or(DecodeError::CannotDecodeNegativeSign)?
+                .ok_or(ParsingError::CannotDecodeNegativeSign)?
                 .to_string();
         }
 
@@ -83,7 +86,7 @@ impl Base36 {
         let mut num: i64 = 0;
 
         for (i, c) in base_36.chars().enumerate() {
-            let position = CHARSET.find(c).ok_or(DecodeError::InvalidCharacter(c))? as i64;
+            let position = CHARSET.find(c).ok_or(ParsingError::InvalidCharacter(c))? as i64;
             let power = CHARSET_LENGTH.pow(i as u32);
 
             num += position * power;
@@ -103,42 +106,42 @@ mod tests {
 
     #[test]
     fn test_encode_zero() {
-        let actual = Base36::encode(0);
+        let actual = Base36::encode(0).unwrap();
 
         assert_eq!(actual, "0");
     }
 
     #[test]
     fn test_encode_positive_number() {
-        let actual = Base36::encode(12345);
+        let actual = Base36::encode(12345).unwrap();
 
         assert_eq!(actual, "9IX");
     }
 
     #[test]
     fn test_encode_negative_number() {
-        let actual = Base36::encode(-9876);
+        let actual = Base36::encode(-9876).unwrap();
 
         assert_eq!(actual, "-7MC");
     }
 
     #[test]
     fn test_encode_large_number() {
-        let actual: String = Base36::encode(987654321);
+        let actual: String = Base36::encode(987654321).unwrap();
 
         assert_eq!(actual, "GC0UY9");
     }
 
     #[test]
     fn test_encode_max_i32() {
-        let actual: String = Base36::encode(i32::MAX);
+        let actual: String = Base36::encode(i32::MAX).unwrap();
 
         assert_eq!(actual, "ZIK0ZJ");
     }
 
     #[test]
     fn test_encode_min_i32() {
-        let actual = Base36::encode(i32::MIN);
+        let actual = Base36::encode(i32::MIN).unwrap();
 
         assert_eq!(actual, "-ZIK0ZK");
     }
