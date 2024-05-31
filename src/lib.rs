@@ -1,19 +1,13 @@
 use std::{error::Error, fmt::Display};
 
-use regex::Regex;
-
 const ZERO: &str = "0";
 const MINUS: char = '-';
 const CHARSET: &str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const CHARSET_LENGTH: i64 = 36;
-const CHARSET_REGEX: &str = "^-?[0-9A-Z]+$";
 
 #[derive(Debug)]
 pub enum ParsingError {
-    InvalidBase36String,
-    InvalidCharacter(char),
     InvalidIndex(usize),
-    CannotDecodeNegativeSign,
 }
 
 impl Error for ParsingError {}
@@ -21,18 +15,21 @@ impl Error for ParsingError {}
 impl Display for ParsingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidBase36String => write!(f, "Invalid base36 string"),
-            Self::InvalidCharacter(c) => write!(f, "Invalid character found: {c}"),
             Self::InvalidIndex(i) => write!(f, "Invalid index: {i}"),
-            Self::CannotDecodeNegativeSign => write!(f, "Cannot decode negative sign"),
         }
     }
 }
 
-pub struct Base36 {}
+pub struct Base36 {
+    value: String,
+}
 
 impl Base36 {
-    pub fn encode(number: i32) -> Result<String, ParsingError> {
+    fn new(value: String) -> Self {
+        Self { value }
+    }
+
+    pub fn from(number: i32) -> Result<Base36, ParsingError> {
         let mut number = i64::from(number);
 
         let is_negative = number < 0;
@@ -41,7 +38,7 @@ impl Base36 {
         }
 
         if number == 0 {
-            return Ok(String::from(ZERO));
+            return Ok(Base36::new(String::from(ZERO)));
         }
 
         let mut base_36 = Vec::new();
@@ -63,40 +60,17 @@ impl Base36 {
             base_36.insert(0, MINUS);
         }
 
-        Ok(base_36)
+        Ok(Base36::new(base_36))
     }
 
-    pub fn decode(base_36: String) -> Result<i32, ParsingError> {
-        if !Regex::new(CHARSET_REGEX).unwrap().is_match(&base_36) {
-            return Err(ParsingError::InvalidBase36String);
-        }
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
 
-        let mut base_36 = base_36;
-
-        let is_negative = base_36.starts_with(MINUS);
-
-        if is_negative {
-            base_36 = base_36
-                .get(1..)
-                .ok_or(ParsingError::CannotDecodeNegativeSign)?
-                .to_string();
-        }
-
-        let base_36 = base_36.chars().rev().collect::<String>();
-        let mut num: i64 = 0;
-
-        for (i, c) in base_36.chars().enumerate() {
-            let position = CHARSET.find(c).ok_or(ParsingError::InvalidCharacter(c))? as i64;
-            let power = CHARSET_LENGTH.pow(i as u32);
-
-            num += position * power;
-        }
-
-        if is_negative {
-            num = -num;
-        }
-
-        Ok(num as i32)
+impl Display for Base36 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 
@@ -105,94 +79,44 @@ mod tests {
     use crate::Base36;
 
     #[test]
-    fn test_encode_zero() {
-        let actual = Base36::encode(0).unwrap();
+    fn test_from_zero() {
+        let actual = Base36::from(0).unwrap();
 
-        assert_eq!(actual, "0");
+        assert_eq!(actual.value(), "0");
     }
 
     #[test]
-    fn test_encode_positive_number() {
-        let actual = Base36::encode(12345).unwrap();
+    fn test_from_positive_number() {
+        let actual = Base36::from(12345).unwrap();
 
-        assert_eq!(actual, "9IX");
+        assert_eq!(actual.value(), "9IX");
     }
 
     #[test]
-    fn test_encode_negative_number() {
-        let actual = Base36::encode(-9876).unwrap();
+    fn test_from_negative_number() {
+        let actual = Base36::from(-9876).unwrap();
 
-        assert_eq!(actual, "-7MC");
+        assert_eq!(actual.value(), "-7MC");
     }
 
     #[test]
-    fn test_encode_large_number() {
-        let actual: String = Base36::encode(987654321).unwrap();
+    fn test_from_large_number() {
+        let actual = Base36::from(987654321).unwrap();
 
-        assert_eq!(actual, "GC0UY9");
+        assert_eq!(actual.value(), "GC0UY9");
     }
 
     #[test]
-    fn test_encode_max_i32() {
-        let actual: String = Base36::encode(i32::MAX).unwrap();
+    fn test_from_max_i32() {
+        let actual = Base36::from(i32::MAX).unwrap();
 
-        assert_eq!(actual, "ZIK0ZJ");
+        assert_eq!(actual.value(), "ZIK0ZJ");
     }
 
     #[test]
-    fn test_encode_min_i32() {
-        let actual = Base36::encode(i32::MIN).unwrap();
+    fn test_from_min_i32() {
+        let actual = Base36::from(i32::MIN).unwrap();
 
-        assert_eq!(actual, "-ZIK0ZK");
-    }
-
-    #[test]
-    fn test_decode_error_invalid_base36() {
-        let actual = Base36::decode(String::from("&/98@"));
-
-        assert!(actual.is_err());
-        assert_eq!(actual.err().unwrap().to_string(), "Invalid base36 string");
-    }
-
-    #[test]
-    fn test_decode_zero() {
-        let actual = Base36::decode(String::from("0")).unwrap();
-
-        assert_eq!(actual, 0);
-    }
-
-    #[test]
-    fn test_decode_positive_number() {
-        let actual = Base36::decode(String::from("9IX")).unwrap();
-
-        assert_eq!(actual, 12345);
-    }
-
-    #[test]
-    fn test_decode_negative_number() {
-        let actual = Base36::decode(String::from("-7MC")).unwrap();
-
-        assert_eq!(actual, -9876);
-    }
-
-    #[test]
-    fn test_decode_large_number() {
-        let actual = Base36::decode(String::from("GC0UY9")).unwrap();
-
-        assert_eq!(actual, 987654321);
-    }
-
-    #[test]
-    fn test_decode_max_i32() {
-        let actual = Base36::decode(String::from("ZIK0ZJ")).unwrap();
-
-        assert_eq!(actual, i32::MAX);
-    }
-
-    #[test]
-    fn test_decode_min_i32() {
-        let actual = Base36::decode(String::from("-ZIK0ZK")).unwrap();
-
-        assert_eq!(actual, i32::MIN);
+        assert_eq!(actual.value(), "-ZIK0ZK");
     }
 }
